@@ -1,9 +1,9 @@
 #!usr/bin/env python
 import numpy as np
 import os
-import hicstraw
+import hictkpy
 import pandas as pd
-import glob
+import sys
 import argparse
 
 # Using the argparse library to take in user inputs and making it user friendly
@@ -23,9 +23,6 @@ if not os.path.exists(args.output):
     os.mkdir(args.output)
     
 # List of chromosomes
-chrom = [str(i) for i in range(1,22)]
-chrom += ["X", "Y"]
-
 # Calculating the highest resolution from the set of resolutions entered by the user
 inputres = args.res
 myres = inputres.split(",")
@@ -34,21 +31,17 @@ highres = min(myres)
 
 
 # Parsing through each chromosome from the chromosome list
-for curchrom in chrom:
+file = hictkpy.File(args.hic, highres)
+for curchrom in file.chromosomes().keys():
+    if curchrom.lower() == "all":
+        continue
     # Using the straw library to dump the intra chromosomal raw reads from HiC file
-    rowidxs = []
-    colidxs = []
-    scores = []
-    dumped = hicstraw.straw("observed","NONE", args.hic, curchrom, curchrom, "BP", highres)
-    for i in range(0,len(dumped)):
-        rowidxs.append(dumped[i].binX)
-        colidxs.append(dumped[i].binY)
-        scores.append(dumped[i].counts)
-    #rowidxs = np.array(dumped[:].binX)
-    #colidxs = np.array(dumped[:].binY)
-    #scores = np.array(dumped[:].counts)
-    
-    
+
+    df = file.fetch(curchrom)
+    rowidxs = df["bin1_id"].to_numpy()
+    colidxs = df["bin2_id"].to_numpy()
+    scores = df["count"].to_numpy()
+
     #rowidxs = np.array(dumped[0][:])
     #colidxs = np.array(dumped[1][:])
     #scores = np.array(dumped[2][:])
@@ -78,23 +71,5 @@ for curchrom in chrom:
     df.insert(7, "frag2", frag2, True)
     output_path = os.path.join(args.output, curchrom+".ssfv")
     # creating a space separated values files which represents the short score format
-    df.to_csv(output_path, sep=" ", header=False, index=False)
-    
-# Merging all the short score format files of each chromosome to a single file
-read_files = glob.glob(os.path.join(args.output,"*.ssfv"))
-output_path = os.path.join(args.output, "subsampled")
-with open(output_path, "wb") as outfile:
-    for f in read_files:
-        with open(f, "rb") as infile:
-            outfile.write(infile.read())
+    df.to_csv(sys.stdout, sep=" ", header=False, index=False)
 
-# Specifying the path for creation of the subsampled HiC file
-hicoutpath = output_path + ".hic"
-del_files = os.path.join(args.output, "*.ssfv")
-my_cmd = "rm " + del_files
-os.system(my_cmd)
-cpu = "-Xmx"+str(args.cpu)+"g"
-
-# Using juicer tools to create the HiC map with the arguments specified by the user
-mycmd =  'java ' + cpu + ' -jar ' + args.juicer + ' pre ' + '-r ' + str(args.res) + ' ' + output_path + ' ' + hicoutpath + ' ' + args.sizes
-os.system(mycmd)
