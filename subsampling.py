@@ -3,7 +3,7 @@ import numpy as np
 import os
 import hicstraw
 import pandas as pd
-import glob
+import sys
 import argparse
 
 # Using the argparse library to take in user inputs and making it user friendly
@@ -22,19 +22,18 @@ args = parser.parse_args()
 if not os.path.exists(args.output):
     os.mkdir(args.output)
     
-# List of chromosomes
-chrom = [str(i) for i in range(1,22)]
-chrom += ["X", "Y"]
-
 # Calculating the highest resolution from the set of resolutions entered by the user
 inputres = args.res
 myres = inputres.split(",")
 myres = list(map(int, myres))
 highres = min(myres)
 
-
+f = hicstraw.HiCFile(args.hic)
 # Parsing through each chromosome from the chromosome list
-for curchrom in chrom:
+for curchrom in f.getChromosomes():
+    curchrom = curchrom.name
+    if curchrom.lower() == "all":
+        continue
     # Using the straw library to dump the intra chromosomal raw reads from HiC file
     rowidxs = []
     colidxs = []
@@ -78,23 +77,5 @@ for curchrom in chrom:
     df.insert(7, "frag2", frag2, True)
     output_path = os.path.join(args.output, curchrom+".ssfv")
     # creating a space separated values files which represents the short score format
-    df.to_csv(output_path, sep=" ", header=False, index=False)
+    df.to_csv(sys.stdout, sep=" ", header=False, index=False)
     
-# Merging all the short score format files of each chromosome to a single file
-read_files = glob.glob(os.path.join(args.output,"*.ssfv"))
-output_path = os.path.join(args.output, "subsampled")
-with open(output_path, "wb") as outfile:
-    for f in read_files:
-        with open(f, "rb") as infile:
-            outfile.write(infile.read())
-
-# Specifying the path for creation of the subsampled HiC file
-hicoutpath = output_path + ".hic"
-del_files = os.path.join(args.output, "*.ssfv")
-my_cmd = "rm " + del_files
-os.system(my_cmd)
-cpu = "-Xmx"+str(args.cpu)+"g"
-
-# Using juicer tools to create the HiC map with the arguments specified by the user
-mycmd =  'java ' + cpu + ' -jar ' + args.juicer + ' pre ' + '-r ' + str(args.res) + ' ' + output_path + ' ' + hicoutpath + ' ' + args.sizes
-os.system(mycmd)
